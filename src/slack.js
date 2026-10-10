@@ -76,12 +76,31 @@ function confirmation(lead, missingOwner) {
 }
 
 export async function startSlack() {
-  const { SLACK_BOT_TOKEN, SLACK_APP_TOKEN } = process.env;
+  // Pasted secrets often carry quotes or spaces; strip them so a copy-paste slip isn't fatal.
+  const tidy = (v) => (v || '').trim().replace(/^['"]|['"]$/g, '').trim();
+  const SLACK_BOT_TOKEN = tidy(process.env.SLACK_BOT_TOKEN);
+  const SLACK_APP_TOKEN = tidy(process.env.SLACK_APP_TOKEN);
   if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
     console.log('[slack] SLACK_BOT_TOKEN / SLACK_APP_TOKEN not set — running without Slack.');
     return null;
   }
-  app = new App({ token: SLACK_BOT_TOKEN, appToken: SLACK_APP_TOKEN, socketMode: true, logLevel: LogLevel.WARN });
+  // Check the bot token first: a bad token should leave the dashboard running, not crash it.
+  try {
+    const who = await new bolt.webApi.WebClient(SLACK_BOT_TOKEN).auth.test();
+    console.log(`[slack] bot token OK (${who.user} in ${who.team})`);
+  } catch (err) {
+    console.error(`[slack] bot token rejected (${err.data?.error || err.message}); running without Slack. ` +
+      `Check SLACK_BOT_TOKEN: it should start with xoxb- and be about 57 characters, with no quotes or spaces.`);
+    return null;
+  }
+  const candidate = new App({ token: SLACK_BOT_TOKEN, appToken: SLACK_APP_TOKEN, socketMode: true, logLevel: LogLevel.WARN, deferInitialization: true });
+  try {
+    await candidate.init();
+  } catch (err) {
+    console.error('[slack] could not initialise:', err.data?.error || err.message);
+    return null;
+  }
+  app = candidate;
 
   app.message(async ({ message: incoming, client }) => {
     let message = incoming;
@@ -134,7 +153,13 @@ export async function startSlack() {
     });
   });
 
-  await app.start();
+  try {
+    await app.start();
+  } catch (err) {
+    console.error('[slack] could not connect (check SLACK_APP_TOKEN, xapp-…):', err.data?.error || err.message);
+    app = null;
+    return null;
+  }
   console.log(`[slack] connected (Socket Mode)${SALES_CHANNEL ? `, watching ${SALES_CHANNEL}` : ', watching every channel the bot is in'}`);
   return app;
 }

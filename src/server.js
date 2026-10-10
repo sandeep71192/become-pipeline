@@ -236,3 +236,5 @@ if (process.env.REMINDERS !== 'off') {
 
 app.listen(PORT, () => console.log(`[web] CRM running at http://localhost:${PORT}`));
 startSlack().catch((err) => console.error('[slack] failed to start:', err.message));
+// Never let a stray Slack or network error take the whole dashboard down.
+process.on('unhandledRejection', (err) => console.error('[unhandled]', err?.data?.error || err?.message || err));
