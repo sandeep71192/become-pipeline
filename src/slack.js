@@ -3,7 +3,8 @@
 // - Replies in that message's thread are saved to the lead's activity log.
 // - A reply that tags someone assigns the owner if the lead has none yet.
 import bolt from '@slack/bolt';
-import { isNewLeadMessage, extractMentions } from './parser.js';
+import { isNewLeadMessage, extractMentions, parseScreenshotLead } from './parser.js';
+import { imageToText } from './ocr.js';
 import { ingestMessage } from './ingest.js';
 import { getLeadBySlackTs, addActivity, updateLead } from './db.js';
 
@@ -12,6 +13,23 @@ const APP_URL = process.env.APP_URL || `http://localhost:${process.env.PORT || 3
 const SALES_CHANNEL = process.env.SLACK_SALES_CHANNEL_ID;
 
 let app = null;
+let botToken = null;
+
+// Screenshots: download each image attached to a message and read its text.
+// Needs the files:read scope; without it Slack returns a login page instead of the image.
+async function readScreenshots(message) {
+  const images = (message.files || []).filter((f) => f.mimetype?.startsWith('image/'));
+  if (!images.length) return null;
+  const texts = [];
+  for (const f of images.slice(0, 4)) {
+    const res = await fetch(f.url_private_download || f.url_private, { headers: { Authorization: `Bearer ${botToken}` } });
+    if (!res.ok || (res.headers.get('content-type') || '').includes('text/html')) {
+      throw Object.assign(new Error('missing files:read'), { code: 'files_read' });
+    }
+    texts.push(await imageToText(Buffer.from(await res.arrayBuffer())));
+  }
+  return texts.filter(Boolean).join('\n\n');
+}
 const userNames = new Map();
 
 export const slackEnabled = () => Boolean(app);
@@ -69,6 +87,7 @@ function confirmation(lead, missingOwner) {
     lead.next_follow_up_at ? `Follow-up: ${fmtDate(lead.next_follow_up_at)}` : null,
   ].filter(Boolean);
   let text = `${bits.join(' · ')}\n<${APP_URL}/#lead-${lead.id}|Open in CRM>`;
+  if (lead.from_screenshot) text += `\n📷 Read from a screenshot: please check the details and correct anything in the CRM.`;
   if (lead.company_missing) text += `\n❓ I couldn't tell which company this is. Reply here with the company name, or set it in the CRM.`;
   if (missingOwner) text += `\n⚠️ No owner tagged. Reply in this thread tagging the person who owns this lead.`;
   if (lead.follow_up_defaulted) text += `\n🗓 No date in *Next Step*, so I set the follow-up to ${fmtDate(lead.next_follow_up_at)}. Change it in the CRM if needed.`;
@@ -101,6 +120,7 @@ export async function startSlack() {
     return null;
   }
   app = candidate;
+  botToken = SLACK_BOT_TOKEN;
 
   app.message(async ({ message: incoming, client }) => {
     let message = incoming;
@@ -119,7 +139,15 @@ export async function startSlack() {
       const lead = getLeadBySlackTs(message.thread_ts);
       if (!lead) return;
       const author = await resolveUser(message.user);
-      addActivity(lead.id, 'slack_reply', message.text, author, message.ts, null);
+      const shot = await readScreenshots(message).catch(() => null);
+      addActivity(lead.id, 'slack_reply', [message.text, shot && `📷 Screenshot text:\n${shot}`].filter(Boolean).join('\n\n'), author, message.ts, null);
+      // "Reply here with the company name": a short answer fills in a missing company.
+      const answer = (message.text || '').replace(/<@[A-Z0-9]+(?:\|[^>]+)?>/g, '').trim();
+      if (/company TBC\)$/.test(lead.company) && answer && answer.split(/\s+/).length <= 6 && !/[?]/.test(answer)) {
+        updateLead(lead.id, { company: answer.replace(/[.!]+$/, '') });
+        addActivity(lead.id, 'edit', `Company set to ${answer} from the thread`, author);
+        await client.reactions.add({ channel: message.channel, timestamp: message.ts, name: 'white_check_mark' }).catch(() => {});
+      }
       if (!lead.owner_slack_id) {
         const [ownerId] = extractMentions(message.text);
         if (ownerId) {
@@ -132,10 +160,31 @@ export async function startSlack() {
       return;
     }
 
-    if (!isNewLeadMessage(message.text)) return;
+    // Screenshot posts: read the image, then treat it like a typed lead.
+    let parsed = null, rawText = message.text || '';
+    if (message.files?.some((f) => f.mimetype?.startsWith('image/'))) {
+      try {
+        const ocr = await readScreenshots(message);
+        if (ocr && (isNewLeadMessage(rawText) || ocr.length >= 40)) {
+          const postedAt = new Date(Number(message.ts) * 1000);
+          parsed = parseScreenshotLead({ note: rawText, ocr, postedAt });
+          rawText = [rawText, `📷 Screenshot text:\n${ocr}`].filter(Boolean).join('\n\n');
+        }
+      } catch (err) {
+        if (!isNewLeadMessage(rawText)) {
+          await client.chat.postMessage({ channel: message.channel, thread_ts: message.ts, unfurl_links: false,
+            text: err.code === 'files_read'
+              ? "📷 I can't open screenshots yet: the app needs the *files:read* permission. Until then, paste the text or use the lead template."
+              : "📷 I couldn't read that screenshot. Paste the key details as text (or use the lead template) and I'll add it." });
+          return;
+        }
+      }
+    }
+    if (!parsed && !isNewLeadMessage(rawText)) return;
     const { lead, created, missingOwner, duplicates } = await ingestMessage(
       {
-        text: message.text,
+        text: rawText,
+        parsed,
         postedAt: new Date(Number(message.ts) * 1000),
         channel: message.channel,
         ts: message.ts,

@@ -9,7 +9,7 @@ const ORG_WORDS = /\b(academy|pvt|private|ltd|limited|llp|inc|labs?|school|colle
 const STOP = new Set(('The A An We Our My Their They He She It This That These Those In On At For From To Of And Or But If As By With ' +
   'Next Step Source Context Requirement Requirements Need Value Currently Post Also Then After Before Since Because Primary ' +
   'Madam Sir Mr Mrs Ms Dr AI LLM UI UX US UK India Monday Tuesday Wednesday Thursday Friday Saturday Sunday ' +
-  'January February March April May June July August September October November December New Lead').split(' '));
+  'January February March April May June July August September October November December New Lead Hi Hello Hey Dear Thanks Regards Best Can Could Would Will Please').split(' '));
 
 /** Most likely client organisation in `text`, ignoring names in `exclude` (contact, referrer). */
 export function findOrganisation(text, exclude = []) {
@@ -19,7 +19,8 @@ export function findOrganisation(text, exclude = []) {
   const skip = exclude.filter(Boolean).map((s) => s.toLowerCase());
   const counts = new Map();
   // Runs of 2-5 capitalised words, allowing "of", "&", "and" inside ("Bank of Baroda", "Ernst & Young").
-  const re = /\b([A-Z][A-Za-z0-9.'&-]+(?:\s+(?:of|&|and|the|for)?\s*[A-Z][A-Za-z0-9.'&-]+){1,4})\b/g;
+  // [ \t] not \s: a name never runs across a line break ("Lumen Skin Labs\nHi Arun").
+  const re = /\b([A-Z][A-Za-z0-9.'&-]+(?:[ \t]+(?:of|&|and|the|for)?[ \t]*[A-Z][A-Za-z0-9.'&-]+){1,4})\b/g;
   for (const [, raw] of text.matchAll(re)) {
     let words = raw.split(/\s+/);
     while (words.length && STOP.has(words[0])) words = words.slice(1);
@@ -84,4 +85,19 @@ export function defaultFollowUp(postedAt) {
     if (d.getDay() !== 0 && d.getDay() !== 6) added++;
   }
   return d;
+}
+
+/** A person's name near the top of a screenshot (LinkedIn profile, chat header): 2-4 capitalised words. */
+export function findPersonName(text, exclude = []) {
+  const skip = exclude.filter(Boolean).map((s) => s.toLowerCase());
+  for (const raw of String(text).split('\n').slice(0, 8)) {
+    const line = raw.replace(/[•·|,(].*$/, '').replace(/\b(he|she|they)\/\w+\b/gi, '').trim();
+    const words = line.split(/\s+/);
+    if (words.length < 2 || words.length > 4 || line.length > 40) continue;
+    if (!words.every((w) => /^[A-Z][a-z'.-]+$/.test(w) || /^[A-Z]\.?$/.test(w))) continue;
+    if (ORG_WORDS.test(line) || words.some((w) => STOP.has(w))) continue;
+    if (skip.some((s) => s && line.toLowerCase().includes(s))) continue;
+    return line;
+  }
+  return null;
 }

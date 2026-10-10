@@ -10,7 +10,7 @@
 // must always produce a usable lead so the app works without an API key.
 
 const HEADER_RE = /^[\s*_~]*(?:new\s*)?lead[\s*_~]*\s*[\/:\-–—|]\s*(.+?)[\s*_~]*$/i;
-import { findOrganisation, classifyNeed, firstSentence, defaultFollowUp } from './engine.js';
+import { findOrganisation, findPersonName, classifyNeed, firstSentence, defaultFollowUp } from './engine.js';
 
 const MENTION_RE = /<@([A-Z0-9]+)(?:\|([^>]+))?>/g;
 const PLAIN_MENTION_RE = /(^|\s)@([A-Za-z][\w.\-]*)/g;
@@ -230,7 +230,7 @@ export function parseLeadMessage(rawText, postedAt = new Date()) {
 }
 
 // Tidy free-form posts into scannable fields. Long originals are kept in notes.
-const ACTION_RE = /\b(send|share|call|meet|schedule|book|follow ?up|reach ?out|get the brief|proposal|demo|sign|discuss)\b/i;
+const ACTION_RE = /\b(send|share|call|meet|talk|chat|connect|schedule|book|follow ?up|reach ?out|get the brief|proposal|demo|sign|discuss)\b/i;
 
 function enrich(lead, body, postedAt) {
   const ownText = body.split('\n').filter((l) => !/^\s*(>|&gt;)/.test(l)).join('\n');
@@ -303,3 +303,59 @@ function applyFreeText(lead, sentence) {
 }
 
 const titleCaseFirst = (s) => s && s[0].toUpperCase() + s.slice(1);
+
+// ---------------------------------------------------------------- screenshots
+
+const ANY_PHONE_RE = /(\+?\d[\d\s().-]{8,}\d)/;
+
+/**
+ * A lead from a screenshot (OCR text) plus whatever was typed with it.
+ * The typed note wins where it says something; the screenshot fills the gaps.
+ */
+export function parseScreenshotLead({ note = '', ocr = '', postedAt = new Date() }) {
+  const typed = unwrapSlack(note || '');
+  let lead = isNewLeadMessage(note) ? parseLeadMessage(note, postedAt) : null;
+  if (!lead) {
+    lead = {
+      company: null, contact_name: null, contact_role: null, need: null, source_person: null, source_event: null,
+      next_step: null, next_follow_up_at: null, owner_slack_ids: extractMentions(note), owner_plain: null,
+      contact_email: null, contact_phone: null, value: null, notes: [],
+    };
+    // Our typed words are "own text"; the screenshot is the prospect's words (quoted).
+    const quoted = ocr.split('\n').map((l) => `> ${l}`).join('\n');
+    lead = enrich(lead, `${typed}\n${quoted}`, postedAt);
+  }
+  lead.contact_email ??= ocr.match(EMAIL_RE)?.[0] ?? null;
+  lead.contact_phone ??= ocr.match(ANY_PHONE_RE)?.[1]?.replace(/\s+/g, ' ') ?? null;
+  if (!lead.value) {
+    const money = ocr.match(VALUE_RE);
+    if (money) lead.value = Math.round(Number(money[1]) * UNIT[money[2].toLowerCase()]);
+  }
+  lead.contact_name ??= findPersonName(ocr);
+  // LinkedIn headline: "Head of Marketing at Lumen Skin Labs" gives role and company.
+  const headline = ocr.split('\n').slice(0, 6).map((l) => l.match(/^(.{3,60}?)\s+(?:at|@)\s+([A-Z][^,|•]{1,60})$/)).find(Boolean);
+  if (headline) {
+    lead.contact_role ??= clean(headline[1]);
+    if (lead.company_missing || !lead.company || lead.company.endsWith('(company TBC)')) { lead.company = clean(headline[2]); delete lead.company_missing; }
+  }
+  // "Can we talk on Thursday?" in their message sets the follow-up if ours didn't.
+  if (lead.follow_up_defaulted) {
+    for (const sentence of ocr.split(/(?<=[.!?])\s+|\n+/).filter((x) => ACTION_RE.test(x))) {
+      const due = parseRelativeDate(sentence, postedAt);
+      if (due) {
+        lead.next_follow_up_at = due.toISOString();
+        delete lead.follow_up_defaulted;
+        lead.next_step ??= `Reply to them: ${clean(sentence)}`;
+        break;
+      }
+    }
+  }
+  if (lead.company_missing || !lead.company || lead.company === lead.contact_name) {
+    const org = findOrganisation(ocr, [lead.contact_name]);
+    if (org) { lead.company = org; delete lead.company_missing; }
+    else if (lead.contact_name && lead.company_missing) lead.company = `${lead.contact_name} (company TBC)`;
+  }
+  lead.need ??= classifyNeed(ocr);
+  lead.from_screenshot = true;
+  return lead;
+}

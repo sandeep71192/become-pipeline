@@ -14,6 +14,7 @@ oauth_config:
       - chat:write         # thread confirmations + stage changes
       - reactions:write    # ✅ when an owner is assigned from a reply
       - users:read         # show owner names instead of IDs
+      - files:read         # read screenshots posted as leads
 settings:
   event_subscriptions:
     bot_events:

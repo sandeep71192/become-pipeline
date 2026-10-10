@@ -22,7 +22,7 @@ export async function ingestMessage(msg, resolveUser = async (id) => id) {
     if (existing) return { lead: existing, created: false, missingOwner: !existing.owner_name, duplicates: [] };
   }
   const postedAt = msg.postedAt ?? new Date();
-  const parsed = parseLeadMessage(msg.text, postedAt);
+  const parsed = msg.parsed ?? parseLeadMessage(msg.text, postedAt);   // screenshots arrive pre-parsed
   if (!parsed) return { lead: null, created: false, missingOwner: false, duplicates: [] };
 
   const fields = await refineWithLLM(msg.text, postedAt, parsed);
@@ -56,6 +56,7 @@ export async function ingestMessage(msg, resolveUser = async (id) => id) {
   if (learned.length) addActivity(lead.id, 'edit', `Applied earlier corrections to: ${learned.join(', ').replaceAll('_', ' ')}`, 'Parser');
   if (fields.follow_up_defaulted) lead.follow_up_defaulted = true;
   if (fields.company_missing) lead.company_missing = true;
+  if (fields.from_screenshot) lead.from_screenshot = true;
   // Never silently double-count: the new lead is kept, but flagged for the review queue.
   const duplicates = findDuplicates(lead, { excludeId: lead.id });
   if (duplicates.length) {

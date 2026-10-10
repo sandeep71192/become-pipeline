@@ -133,6 +133,24 @@ Delete a `<link>` in `index.html` to drop a layer.
 
 Socket Mode means no public URL or ngrok is needed. The app connects out to Slack.
 
+## Lead template (share with the team)
+
+```
+New Lead/ <Company name>
+Contact: <Name>, <Role> · <phone> · <email>
+Requirement: <what they need, one line>
+Budget: <e.g. 7L, 1.2Cr, TBD>
+Source: <who referred>, <event or channel>
+Next Step: <action> on <day/date> @<owner>
+```
+
+Rules:
+* One lead per post.
+* Always @tag the owner.
+* Give a date. Without one, the follow-up defaults to two working days later.
+* Post updates as thread replies.
+* **Screenshots** (LinkedIn, WhatsApp, email): post them alone or with the template. The bot reads the image (local OCR, no API cost) and asks you to check what it read. Needs the Slack `files:read` scope.
+
 ## Message format
 
 ```

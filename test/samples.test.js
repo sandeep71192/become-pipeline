@@ -76,3 +76,46 @@ test('ordinary chat is not a lead', () => {
     assert.equal(isNewLeadMessage(t), false, t);
   }
 });
+
+test('screenshot: LinkedIn-style message read by OCR', async () => {
+  const { parseScreenshotLead } = await import('../src/parser.js');
+  const ocr = `Rhea Kapoor
+Head of Marketing at Lumen Skin Labs
+Hi Arun, we are relaunching Lumen Skin Labs next quarter
+and need a complete rebrand plus a new Shopify store.
+Budget is around 12L. Can we talk on Thursday?
+rhea@example.in +91 99999 00004`;
+  const l = parseScreenshotLead({ note: '<@U05UDFQ1Z7A|Arun Sandeep> can you take this?', ocr, postedAt: POSTED });
+  assert.equal(l.company, 'Lumen Skin Labs');
+  assert.equal(l.contact_name, 'Rhea Kapoor');
+  assert.equal(l.contact_role, 'Head of Marketing');
+  assert.equal(l.contact_email, 'rhea@example.in');
+  assert.equal(l.contact_phone, '+91 99999 00004');
+  assert.equal(l.value, 1200000);
+  assert.deepEqual(l.owner_slack_ids, ['U05UDFQ1Z7A']);
+  assert.equal(new Date(l.next_follow_up_at).getDay(), 4);   // Thursday
+  assert.equal(l.from_screenshot, true);
+});
+
+test('screenshot with a typed template on top: template wins, screenshot fills gaps', async () => {
+  const { parseScreenshotLead } = await import('../src/parser.js');
+  const l = parseScreenshotLead({
+    note: 'New Lead/ Lumen Skin\nRequirement: Rebrand\nNext Step: Call on Friday <@U1|Juhi>',
+    ocr: 'Rhea Kapoor\nHead of Marketing at Lumen Skin Labs\nrhea@example.in',
+    postedAt: POSTED,
+  });
+  assert.equal(l.company, 'Lumen Skin');                 // typed
+  assert.equal(l.need, 'Brand identity');               // typed
+  assert.equal(l.contact_name, 'Rhea Kapoor');          // from screenshot
+  assert.equal(l.contact_email, 'rhea@example.in');     // from screenshot
+  assert.equal(new Date(l.next_follow_up_at).getDay(), 5);
+});
+
+test('OCR reads a real image (set OCR_TEST=1; downloads the model once)', { skip: !process.env.OCR_TEST }, async () => {
+  const { readFileSync } = await import('node:fs');
+  const { imageToText, stopOcr } = await import('../src/ocr.js');
+  const text = await imageToText(readFileSync('test/fixtures/linkedin-message.png'));
+  await stopOcr();
+  assert.match(text, /Lumen Skin Labs/);
+  assert.match(text, /rhea@lumenskinlabs\.in/);
+});
