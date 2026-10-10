@@ -1,6 +1,8 @@
 import { initHubspotImport } from './hubspot-import.js';
 import { initDuplicates } from './duplicates.js';
 import { initRoadmap } from './roadmap.js';
+import { renderRecord, bindRecord } from './record.js';
+import { miniProgress } from './progress.js';
 import { initFeedbackWidget } from './feedback-widget.js';
 import { initMe, getMe, onMeOpen } from './me.js';
 import { createPulse } from './pulse.js';
@@ -109,6 +111,7 @@ function cardHTML(l) {
     ${contact ? `<div class="card-line">${esc(contact)}</div>` : ''}
     ${l.need ? `<div class="card-line">${esc(l.need)}${l.value ? ` · ${money(l.value)}` : ''}</div>` : ''}
     ${l.next_step ? `<div class="card-line" title="Next step">→ ${esc(l.next_step)}</div>` : ''}
+    ${miniProgress(l, state.statuses)}
     <div class="card-foot"><span class="chip ${due.cls}">${esc(due.text)}</span>${avatar(l.owner_name)}</div>
   </article>`;
 }
@@ -177,51 +180,20 @@ async function openLead(id) {
   if (location.hash !== `#lead-${id}`) history.replaceState(null, '', `#lead-${id}`);
   const l = await api(`/api/leads/${id}`);
   if (l.id !== id) { state.openId = l.id; history.replaceState(null, '', `#lead-${l.id}`); }   // was merged into l
-  const field = (k, label, type = 'text', full = false) =>
-    `<label class="${full ? 'full' : ''}">${label}<input data-field="${k}" type="${type}" value="${esc(type === 'datetime-local' ? toLocalInput(l[k]) : l[k])}"></label>`;
-  $('#drawer').innerHTML = `
-    <div class="drawer-head">
-      <div><h2>${esc(l.company)}</h2><p class="sub">Created ${new Date(l.created_at + 'Z').toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}${l.posted_by ? ` by ${esc(l.posted_by)}` : ''}</p></div>
-      <button class="close" aria-label="Close">×</button>
-    </div>
-    ${l.slack_permalink ? `<a class="link" href="${esc(l.slack_permalink)}" target="_blank" rel="noopener">Open Slack thread ↗</a>` : ''}
-    ${l.duplicates.length ? `<div class="dup-warn"><strong>⚠ May be a duplicate of:</strong>
-      ${l.duplicates.slice(0, 3).map((d) => `<div class="m"><span><a class="link" href="#lead-${d.lead.id}">${esc(d.lead.company)}</a>
-        <span class="conf ${d.confidence}">${d.confidence}</span><br><span class="sub">${esc(d.reasons.join(' · '))} · owner ${esc(d.lead.owner_name || 'none')}</span></span></div>`).join('')}
-      <a class="link" href="#duplicates">Compare &amp; merge →</a></div>` : ''}
-    ${l.merged.length ? `<p class="sub small">Merged in: ${l.merged.map((m) => `${esc(m.company)} (#${m.id})${m.slack_permalink ? ` · <a class="link" href="${esc(m.slack_permalink)}" target="_blank" rel="noopener">Slack</a>` : ''}`).join(', ')}</p>` : ''}
-    <div class="fields">
-      <label class="full">Stage<select data-field="status">${state.statuses.map((s) => `<option value="${s.key}" ${s.key === l.status ? 'selected' : ''}>${esc(s.label)}</option>`).join('')}</select></label>
-      ${field('owner_name', 'Owner')}
-      ${field('value', 'Deal value (₹)', 'number')}
-      ${field('contact_name', 'Contact')}
-      ${field('contact_role', 'Role')}
-      ${field('contact_email', 'Email', 'email')}
-      ${field('contact_phone', 'Phone', 'tel')}
-      ${field('need', 'Need', 'text', true)}
-      ${field('next_step', 'Next step')}
-      ${field('next_follow_up_at', 'Follow-up on', 'datetime-local')}
-      ${field('source_person', 'Source')}
-      ${field('source_event', 'Source event / company')}
-    </div>
-    <div class="saved" id="saved"></div>
-    <div class="section-title">Add note</div>
-    <form class="note-form" id="noteForm"><textarea placeholder="Called Diya, sending proposal Wednesday…" required></textarea><button class="btn">Add</button></form>
-    <div class="section-title">Activity</div>
-    <ul class="timeline">${l.activities.map((a) => `<li class="${a.type}">
-      <div class="tl-meta">${esc(a.type.replaceAll('_', ' '))} · ${esc(a.author || 'System')} · ${new Date(a.created_at + 'Z').toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</div>
-      <div class="tl-body">${esc(a.body)}</div></li>`).join('')}</ul>
-    ${l.raw_message ? `<div class="section-title">Original Slack message</div><div class="raw">${esc(l.raw_message)}</div>` : ''}`;
+  const firstOpen = $('#drawer').hidden;
+  $('#drawer').innerHTML = renderRecord(l, { statuses: state.statuses, avatar, statusLabel });
+  $('#dealsPage').hidden = true;
   $('#drawer').hidden = false;
-  $('#scrim').hidden = false;
+  if (firstOpen) window.scrollTo(0, 0);
 }
 
 function closeDrawer() {
   state.openId = null;
   $('#drawer').hidden = true;
-  $('#scrim').hidden = true;
+  if (currentPage() === 'deals') $('#dealsPage').hidden = false;
   history.replaceState(null, '', location.pathname);
 }
+bindRecord($('#drawer'));
 
 
 async function patchLead(id, patch) {
@@ -288,7 +260,7 @@ $('#drawer').addEventListener('change', async (e) => {
   const editedId = state.openId;
   await patchLead(editedId, { [el.dataset.field]: v });
   await openLead(editedId);
-  $('#saved').textContent = 'Saved ✓';
+  toast('Saved ✓');
   actionDone(el.dataset.field === 'status' ? 'stage_move' : 'deal_edit', dealCtx(editedId));
 });
 $('#drawer').addEventListener('submit', async (e) => {
@@ -356,10 +328,11 @@ function route() {
   $('#dupPage').hidden = page !== 'duplicates';
   $('#rmPage').hidden = page !== 'roadmap';
   document.querySelectorAll('.topnav a').forEach((a) => a.classList.toggle('active', a.dataset.page === page));
-  if (page !== 'deals' && !$('#drawer').hidden) { $('#drawer').hidden = true; $('#scrim').hidden = true; state.openId = null; }
+  if (page !== 'deals' && !$('#drawer').hidden) { $('#drawer').hidden = true; state.openId = null; }
   if (page === 'duplicates') dupes.load();
   if (page === 'roadmap') roadmapTab.load();
   const m = location.hash.match(/^#lead-(\d+)/);
+  if (m) $('#dealsPage').hidden = true;
   if (m && Number(m[1]) !== state.openId) openLead(Number(m[1]));
   else if (!m && page === 'deals' && state.openId != null) closeDrawer();
 }

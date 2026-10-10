@@ -95,7 +95,9 @@ export const EDITABLE_FIELDS = new Set([
 
 /** Active leads only; merged-away leads are hidden. */
 export function listLeads() {
-  return db.prepare(`SELECT * FROM leads WHERE merged_into IS NULL ORDER BY datetime(created_at) DESC, id DESC`).all();
+  // stage_changed_at: when the deal entered its current stage (for "4d in Proposal" on cards).
+  return db.prepare(`SELECT l.*, (SELECT MAX(a.created_at) FROM activities a WHERE a.lead_id = l.id AND a.type = 'status_change') AS stage_changed_at
+    FROM leads l WHERE l.merged_into IS NULL ORDER BY datetime(l.created_at) DESC, l.id DESC`).all();
 }
 
 /** Follow merges to the surviving lead. */

@@ -95,6 +95,11 @@ function confirmation(lead, missingOwner) {
 }
 
 export async function startSlack() {
+  // SLACK=off keeps a local copy from competing with the hosted bot for the same messages.
+  if (process.env.SLACK === 'off') {
+    console.log('[slack] SLACK=off: running without Slack (the hosted copy handles the channel).');
+    return null;
+  }
   // Pasted secrets often carry quotes or spaces; strip them so a copy-paste slip isn't fatal.
   const tidy = (v) => (v || '').trim().replace(/^['"]|['"]$/g, '').trim();
   const SLACK_BOT_TOKEN = tidy(process.env.SLACK_BOT_TOKEN);

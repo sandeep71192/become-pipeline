@@ -7,6 +7,7 @@ import {
 } from './db.js';
 import { parseLeadMessage } from './parser.js';
 import { findDuplicates, scanDuplicates, flaggedLeads } from './duplicates.js';
+import { keys as matchKeys } from './dedupe.js';
 import { STATUSES, STATUS_KEYS, statusLabel } from './statuses.js';
 import { ingestMessage } from './ingest.js';
 import { startSlack, slackEnabled, notifyThread, postToSalesChannel } from './slack.js';
@@ -63,7 +64,11 @@ app.get('/api/leads/:id', (req, res) => {
   const id = resolveId(Number(req.params.id));
   const lead = id && getLead(id);
   if (!lead) return res.status(404).json({ error: 'Not found' });
-  res.json({ ...lead, duplicates: findDuplicates(lead) });
+  // Other deals with the same company (by name without suffixes) for the record page's right column.
+  const core = matchKeys(lead).core;
+  const related = core ? listLeads().filter((o) => o.id !== lead.id && matchKeys(o).core === core)
+    .map(({ id, company, status, value, owner_name, need }) => ({ id, company, status, value, owner_name, need })) : [];
+  res.json({ ...lead, duplicates: findDuplicates(lead), related });
 });
 
 app.patch('/api/leads/:id', async (req, res) => {
