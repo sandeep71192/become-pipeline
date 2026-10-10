@@ -1,0 +1,154 @@
+/*
+ * Become® brand layer, adapted from become.team. Sits on top of apple.css (which keeps the
+ * Apple interaction patterns: segmented controls, sheets, switches) and swaps in:
+ *   - whitesmoke canvas, near-black ink, grey body copy
+ *   - periwinkle accent (#8b96f8) with lavender tints; deeper periwinkle where text needs contrast
+ *   - Inter Tight headlines at regular weight with tight tracking (stand-in for PolySans),
+ *     Inter body, DM Mono eyebrows and labels
+ *   - pill buttons, black bars, the isometric cube mark
+ */
+:root {
+  --brand-ink: #151515;
+  --brand-ink-2: #1e1e1e;
+  --brand-peri: #8b96f8;
+  --brand-peri-deep: #5460e0;       /* periwinkle dark enough for text on white */
+  --brand-lav: #d5daeb;
+  --brand-slate: #6677af;
+  --brand-grey: #6c6a6c;
+
+  --bg: #f4f4f4;
+  --surface: #ffffff;
+  --surface-2: #f9f9f9;
+  --inset: #f4f4f4;
+  --inset-field: #ffffff;
+  --fill: rgba(21, 21, 21, .06);
+  --fill-2: rgba(21, 21, 21, .035);
+  --border: rgba(21, 21, 21, .1);
+  --text: #151515;
+  --muted: #6c6a6c;
+  --tertiary: #a7acbb;
+  --accent: var(--brand-peri-deep);
+  --accent-tint: rgba(139, 150, 248, .18);
+  --seg-on: #ffffff;
+  --ring: 0 0 0 4px rgba(139, 150, 248, .45);
+  --shadow: 0 1px 2px rgba(21, 21, 21, .04);
+  --shadow-lift: 0 14px 34px rgba(21, 21, 21, .1), 0 2px 6px rgba(21, 21, 21, .05);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --btn-bg: #151515; --btn-ink: #ffffff;
+  --font-display: "Inter Tight", "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+  --font-mono: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0b0b; --surface: #151515; --surface-2: #1c1c1c; --inset: #1e1e1e; --inset-field: #262626;
+    --fill: rgba(244, 244, 244, .08); --fill-2: rgba(244, 244, 244, .04); --border: rgba(244, 244, 244, .1);
+    --text: #f4f4f4; --muted: #a7acbb; --tertiary: #6c6a6c;
+    --accent: var(--brand-peri); --accent-tint: rgba(139, 150, 248, .2); --seg-on: #3a3a3a;
+    --shadow: none; --shadow-lift: 0 14px 34px rgba(0, 0, 0, .5);
+    --btn-bg: #f4f4f4; --btn-ink: #151515;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b0b0b; --surface: #151515; --surface-2: #1c1c1c; --inset: #1e1e1e; --inset-field: #262626;
+  --fill: rgba(244, 244, 244, .08); --fill-2: rgba(244, 244, 244, .04); --border: rgba(244, 244, 244, .1);
+  --text: #f4f4f4; --muted: #a7acbb; --tertiary: #6c6a6c;
+  --accent: var(--brand-peri); --accent-tint: rgba(139, 150, 248, .2); --seg-on: #3a3a3a;
+  --shadow: none; --shadow-lift: 0 14px 34px rgba(0, 0, 0, .5);
+  --btn-bg: #f4f4f4; --btn-ink: #151515;
+}
+
+/* ---------------------------------------------------------------- type */
+body { font-family: var(--font-body); font-size: 14.5px; letter-spacing: -.005em; background: var(--bg); }
+h1, h2, h3, .h2, .h3, .brand, .card-co, .tile b, .stat b, .pulse-q, .loop-step strong, .rm-card h3, .pair-head h3, .horizon-head strong {
+  font-family: var(--font-display);
+}
+h1 { font-size: 44px; font-weight: 500; letter-spacing: -.035em; line-height: 1.05; }
+h2, .h2 { font-weight: 500; letter-spacing: -.025em; }
+.h2 { font-size: 22px; }
+.drawer h2, dialog h2 { font-weight: 500; letter-spacing: -.03em; }
+.card-co { font-weight: 500; letter-spacing: -.02em; font-size: 15.5px; }
+.tile b, .stat b { font-weight: 500; letter-spacing: -.04em; font-size: 32px; }
+.sub { color: var(--muted); }
+
+/* DM Mono eyebrows and labels, as on become.team */
+.section-title, .lbl, .when, .sc-id, .col-sum, .tl-meta, .conf, .loop-who, .loop-count, .horizon-head .sub, .cycle-banner strong {
+  font-family: var(--font-mono); letter-spacing: .02em;
+}
+.section-title { font-size: 11.5px; text-transform: uppercase; color: var(--accent); }
+.lbl { font-size: 10.5px; color: var(--tertiary); }
+.when { color: var(--accent); font-size: 11px; }
+.sc-id { color: var(--accent); font-weight: 500; }
+.col-title { font-family: var(--font-display); font-size: 14px; font-weight: 500; letter-spacing: -.01em; }
+.col-count { font-family: var(--font-mono); background: transparent; border: 1px solid var(--border); }
+
+/* ---------------------------------------------------------------- bar: black, like the site's menu */
+.topbar {
+  background: rgba(21, 21, 21, .92); color: #f4f4f4; border-bottom: 0;
+  -webkit-backdrop-filter: saturate(160%) blur(18px); backdrop-filter: saturate(160%) blur(18px);
+}
+.brand { font-size: 17px; font-weight: 500; letter-spacing: -.03em; color: #f4f4f4; gap: 10px; }
+.brand .product { color: #a7acbb; font-weight: 400; }
+.brand sup { font-size: 9px; margin-left: 1px; vertical-align: 8px; }
+.logo { width: 30px; height: 30px; background: none; box-shadow: none; border-radius: 0; }
+.logo svg { width: 30px; height: 30px; }
+.topnav { background: rgba(244, 244, 244, .1); border-radius: 999px; padding: 3px; }
+.topnav a { color: rgba(244, 244, 244, .75); border-radius: 999px; padding: 6px 16px; font-weight: 500; }
+.topnav a:hover { color: #fff; }
+.topnav a.active { background: #f4f4f4; color: #151515; box-shadow: none; }
+.badge { background: var(--brand-peri); color: #0b0b0b; }
+.slack-state { color: #a7acbb; font-family: var(--font-mono); font-size: 11.5px; }
+.me-btn { background: rgba(244, 244, 244, .1); color: #f4f4f4; }
+.me-btn svg { color: #a7acbb; }
+
+/* ---------------------------------------------------------------- buttons: pills */
+.btn { border-radius: 999px; padding: 9px 18px; background: var(--fill); color: var(--text); font-weight: 500; }
+.btn.primary { background: var(--btn-bg); color: var(--btn-ink); font-weight: 500; }
+.btn.primary:hover { filter: none; background: var(--brand-peri-deep); color: #fff; }
+.fb-actions .btn, .sc-actions .btn { padding: 6px 14px; }
+.seg, .subtabs { border-radius: 999px; padding: 3px; }
+.seg button, .subtabs button { border-radius: 999px; }
+.toolbar select, .toolbar input, td select, .rm-top select, .pair-actions select { border-radius: 999px; }
+.toolbar select, .toolbar input { background-color: var(--surface); box-shadow: 0 0 0 1px var(--border); }
+a.link, .link-btn { color: var(--accent); }
+.check input[type=checkbox]:checked { background: var(--brand-peri-deep); }
+
+/* ---------------------------------------------------------------- surfaces */
+.col, .horizon, .fb-col { background: rgba(21, 21, 21, .035); border-radius: 20px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .col, :root:not([data-theme="light"]) .horizon, :root:not([data-theme="light"]) .fb-col { background: rgba(244, 244, 244, .035); } }
+.card, .list, .pair, .history, .lens-card, .scenario, .rm-card, .cycle-banner, .loop-step, .tile, .stat, .fb-card {
+  box-shadow: 0 0 0 1px var(--border);
+}
+:root .card { box-shadow: 0 0 0 1px var(--border); }
+.card:hover, .loop-step:hover { box-shadow: var(--shadow-lift), 0 0 0 1px var(--border); }
+.col-body.drop { outline-color: var(--brand-peri); background: var(--accent-tint); }
+.cycle-banner::before { background: var(--brand-peri); }
+.chip.soon { background: var(--accent-tint); color: var(--accent); }
+.cmp td.win { background: var(--accent-tint); }
+dialog, .drawer { border-radius: 22px; }
+.fields { border-radius: 16px; }
+.dropzone { border-color: var(--brand-lav); border-radius: 18px; }
+.dropzone:hover, .dropzone.over { border-color: var(--brand-peri); }
+
+/* Loop steps: brand ramp instead of system colours */
+.loop-step:nth-of-type(1) .loop-n { background: var(--brand-peri); color: #0b0b0b; }
+.loop-step:nth-of-type(2) .loop-n { background: var(--brand-slate); }
+.loop-step:nth-of-type(3) .loop-n { background: var(--brand-ink); }
+.loop-step:nth-of-type(4) .loop-n { background: #1d7a4e; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .loop-step:nth-of-type(3) .loop-n { background: #f4f4f4; color: #151515; } }
+.bar i { background: var(--brand-peri); }
+.rm-card.status-in_progress::before { background: var(--brand-peri); }
+
+/* Page heads: big regular-weight headline with roomy grey intro copy */
+.page-head { padding: 8px 0 6px; }
+.page-head .sub { font-size: 15px; max-width: 70ch; }
+
+/* ---------------------------------------------------------------- floating button & pulse */
+.fb-fab { background: var(--btn-bg); color: var(--btn-ink); box-shadow: 0 10px 28px rgba(21, 21, 21, .25); font-weight: 500; }
+.fb-fab::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--brand-peri); margin-right: 2px; }
+.fb-fab svg { display: none; }
+.pulse { font-family: var(--font-body); }
+.toast { background: rgba(21, 21, 21, .92); border-radius: 999px; padding: 12px 20px; }
+.toolbar input[type=search] { background-color: var(--surface); }
+.h2 .sub { font-family: var(--font-body); font-size: 13px; font-weight: 400; letter-spacing: 0; margin-left: 8px; }

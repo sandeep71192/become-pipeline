@@ -1,0 +1,158 @@
+// Slack bot (Socket Mode — no public URL needed).
+// - Top-level "New Lead/ ..." messages in the sales channel become leads.
+// - Replies in that message's thread are saved to the lead's activity log.
+// - A reply that tags someone assigns the owner if the lead has none yet.
+import bolt from '@slack/bolt';
+import { isNewLeadMessage, extractMentions } from './parser.js';
+import { ingestMessage } from './ingest.js';
+import { getLeadBySlackTs, addActivity, updateLead } from './db.js';
+
+const { App, LogLevel } = bolt;
+const APP_URL = process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`;
+const SALES_CHANNEL = process.env.SLACK_SALES_CHANNEL_ID;
+
+let app = null;
+const userNames = new Map();
+
+export const slackEnabled = () => Boolean(app);
+
+export async function resolveUser(id) {
+  if (!app || !id) return id;
+  if (userNames.has(id)) return userNames.get(id);
+  try {
+    const { user } = await app.client.users.info({ user: id });
+    const name = user.profile?.display_name || user.real_name || user.name || id;
+    userNames.set(id, name);
+    return name;
+  } catch {
+    return id;
+  }
+}
+
+async function permalink(channel, ts) {
+  try {
+    return (await app.client.chat.getPermalink({ channel, message_ts: ts })).permalink;
+  } catch {
+    return null;
+  }
+}
+
+const fmtDate = (iso) =>
+  iso ? new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : null;
+
+const STAGE = { closed_lost: 'Closed / Lost', completed_project: 'Completed project' };
+
+function duplicateWarning(lead, duplicates) {
+  const d = duplicates[0];
+  const who = d.lead.owner_slack_id ? `<@${d.lead.owner_slack_id}>` : d.lead.owner_name || 'nobody';
+  const when = new Date(d.lead.created_at + 'Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  const lines = [
+    d.closed
+      ? `🔁 *Returning client?* "${d.lead.company}" is already in the CRM as *${STAGE[d.lead.status]}* (owner ${who}, added ${when}).`
+      : `⚠️ *Possible duplicate* (${d.confidence}) of "${d.lead.company}", owned by ${who}, added ${when}.`,
+    `_${d.reasons.join(' · ')}_`,
+  ];
+  if (d.lead.owner_slack_id && lead.owner_slack_id && d.lead.owner_slack_id !== lead.owner_slack_id) {
+    lines.push(`👥 Different owners: <@${lead.owner_slack_id}> and <@${d.lead.owner_slack_id}>, please agree who takes it.`);
+  }
+  if (duplicates.length > 1) lines.push(`…and ${duplicates.length - 1} more similar lead${duplicates.length > 2 ? 's' : ''}.`);
+  lines.push(`<${APP_URL}/#duplicates|Review & merge in the CRM>`);
+  return lines.join('\n');
+}
+
+function confirmation(lead, missingOwner) {
+  const contact = [lead.contact_name, lead.contact_role && `(${lead.contact_role})`].filter(Boolean).join(' ');
+  const bits = [
+    `✅ *${lead.company}* added to the pipeline`,
+    contact,
+    lead.owner_slack_id ? `Owner: <@${lead.owner_slack_id}>` : null,
+    lead.next_follow_up_at ? `Follow-up: ${fmtDate(lead.next_follow_up_at)}` : null,
+  ].filter(Boolean);
+  let text = `${bits.join(' · ')}\n<${APP_URL}/#lead-${lead.id}|Open in CRM>`;
+  if (lead.company_missing) text += `\n❓ I couldn't tell which company this is. Reply here with the company name, or set it in the CRM.`;
+  if (missingOwner) text += `\n⚠️ No owner tagged. Reply in this thread tagging the person who owns this lead.`;
+  if (lead.follow_up_defaulted) text += `\n🗓 No date in *Next Step*, so I set the follow-up to ${fmtDate(lead.next_follow_up_at)}. Change it in the CRM if needed.`;
+  return text;
+}
+
+export async function startSlack() {
+  const { SLACK_BOT_TOKEN, SLACK_APP_TOKEN } = process.env;
+  if (!SLACK_BOT_TOKEN || !SLACK_APP_TOKEN) {
+    console.log('[slack] SLACK_BOT_TOKEN / SLACK_APP_TOKEN not set — running without Slack.');
+    return null;
+  }
+  app = new App({ token: SLACK_BOT_TOKEN, appToken: SLACK_APP_TOKEN, socketMode: true, logLevel: LogLevel.WARN });
+
+  app.message(async ({ message: incoming, client }) => {
+    let message = incoming;
+    // An edited post that only now reads like a lead (e.g. a header was added) is picked up too.
+    if (message.subtype === 'message_changed' && message.message && !message.message.thread_ts) {
+      const edited = { ...message.message, channel: message.channel };
+      if (!getLeadBySlackTs(edited.ts) && isNewLeadMessage(edited.text)) message = edited;
+      else return;
+    } else if (message.subtype && message.subtype !== 'file_share') return; // joins, bot posts
+    if (message.bot_id) return;
+    if (SALES_CHANNEL && message.channel !== SALES_CHANNEL) return;
+
+    const isReply = message.thread_ts && message.thread_ts !== message.ts;
+
+    if (isReply) {
+      const lead = getLeadBySlackTs(message.thread_ts);
+      if (!lead) return;
+      const author = await resolveUser(message.user);
+      addActivity(lead.id, 'slack_reply', message.text, author, message.ts, null);
+      if (!lead.owner_slack_id) {
+        const [ownerId] = extractMentions(message.text);
+        if (ownerId) {
+          const name = await resolveUser(ownerId);
+          updateLead(lead.id, { owner_slack_id: ownerId, owner_name: name });
+          addActivity(lead.id, 'edit', `Owner set to ${name}`, author);
+          await client.reactions.add({ channel: message.channel, timestamp: message.ts, name: 'white_check_mark' }).catch(() => {});
+        }
+      }
+      return;
+    }
+
+    if (!isNewLeadMessage(message.text)) return;
+    const { lead, created, missingOwner, duplicates } = await ingestMessage(
+      {
+        text: message.text,
+        postedAt: new Date(Number(message.ts) * 1000),
+        channel: message.channel,
+        ts: message.ts,
+        permalink: await permalink(message.channel, message.ts),
+        postedBy: await resolveUser(message.user),
+      },
+      resolveUser
+    );
+    if (!created) return;
+    await client.chat.postMessage({
+      channel: message.channel,
+      thread_ts: message.ts,
+      text: confirmation(lead, missingOwner) + (duplicates.length ? `\n\n${duplicateWarning(lead, duplicates)}` : ''),
+      unfurl_links: false,
+    });
+  });
+
+  await app.start();
+  console.log(`[slack] connected (Socket Mode)${SALES_CHANNEL ? `, watching ${SALES_CHANNEL}` : ', watching every channel the bot is in'}`);
+  return app;
+}
+
+/** Post a status change back into the lead's Slack thread. */
+export async function notifyThread(lead, text) {
+  if (!app || !lead.slack_channel || !lead.slack_ts) return;
+  await app.client.chat
+    .postMessage({ channel: lead.slack_channel, thread_ts: lead.slack_ts, text, unfurl_links: false })
+    .catch((err) => console.warn('[slack] thread post failed:', err.data?.error || err.message));
+}
+
+export const getSlackApp = () => app;
+
+/** Post a top-level message in the sales channel (used by the reminder flow). */
+export async function postToSalesChannel(text, lead) {
+  if (!app) throw new Error('Slack is not connected');
+  const channel = SALES_CHANNEL || lead?.slack_channel;
+  if (!channel) throw new Error('No sales channel configured');
+  await app.client.chat.postMessage({ channel, text, unfurl_links: false, unfurl_mentions: false });
+}

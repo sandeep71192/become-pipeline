@@ -1,0 +1,26 @@
+{
+  "name": "sales-crm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Lightweight HubSpot-style CRM fed from the Slack #sales channel",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch src/server.js",
+    "seed": "node --disable-warning=ExperimentalWarning scripts/seed.js",
+    "backfill": "node --disable-warning=ExperimentalWarning scripts/backfill.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@slack/bolt": "^4.1.0",
+    "@slack/web-api": "^7.0.0",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.21.0",
+    "zod": "^3.23.8"
+  }
+}

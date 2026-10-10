@@ -1,0 +1,24 @@
+# Slack → api.slack.com/apps → Create New App → From an app manifest → paste this.
+display_information:
+  name: Sales Pipeline
+  description: Turns "New Lead/ ..." posts in #sales into CRM deals.
+features:
+  bot_user:
+    display_name: pipeline
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - channels:history   # read #sales (public)
+      - groups:history     # read #sales if it's private
+      - chat:write         # thread confirmations + stage changes
+      - reactions:write    # ✅ when an owner is assigned from a reply
+      - users:read         # show owner names instead of IDs
+settings:
+  event_subscriptions:
+    bot_events:
+      - message.channels
+      - message.groups
+  interactivity:
+    is_enabled: false
+  socket_mode_enabled: true

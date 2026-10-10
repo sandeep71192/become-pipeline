@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Become Pipeline</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="apple.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter+Tight:wght@400;500;600&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="become.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 3 28 10 16 17 4 10Z" fill="#f4f4f4"/><path d="M4 10 16 17V30L4 23Z" fill="#8f8f8f"/><path d="M28 10 16 17V30L28 23Z" fill="#4a4a4a"/></svg></span><span>Become<sup>®</sup> <span class="product">Pipeline</span></span></div>
+  <nav class="topnav">
+    <a href="#" data-page="deals" class="active">Deals</a>
+    <a href="#duplicates" data-page="duplicates">Duplicates <span class="badge" id="dupBadge" hidden></span></a>
+    <a href="#roadmap" data-page="roadmap">Roadmap</a>
+  </nav>
+  <div class="slack-state" id="slackState"></div>
+  <button class="me-btn" id="meBtn" title="Who's using this browser"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16m0-9.5a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5m-4.9 5.3A5.98 5.98 0 0 0 10 16.5c1.99 0 3.76-.97 4.9-2.7C13.9 12.4 12.1 11.5 10 11.5s-3.9.9-4.9 2.3"/></svg><span data-me>Set your name</span></button>
+</header>
+
+<main id="dealsPage">
+  <section class="page-head">
+    <div>
+      <h1>Deals</h1>
+      <p class="sub" id="summary">Loading…</p>
+    </div>
+    <div class="head-actions">
+      <button class="btn" id="hubspotBtn">Import HubSpot export</button>
+      <button class="btn primary" id="importBtn">+ Add from Slack message</button>
+    </div>
+  </section>
+
+  <section class="toolbar">
+    <div class="seg" role="tablist" aria-label="View">
+      <button data-view="board" class="on">Board</button>
+      <button data-view="list">List</button>
+    </div>
+    <select id="pipeline" aria-label="Pipeline">
+      <option value="sales">Sales pipeline</option>
+      <option value="projects">Projects &amp; payments</option>
+      <option value="all">All stages</option>
+    </select>
+    <select id="owner" aria-label="Owner"><option value="">All owners</option></select>
+    <select id="due" aria-label="Follow-up">
+      <option value="">Any follow-up</option>
+      <option value="overdue">Overdue</option>
+      <option value="today">Due today</option>
+      <option value="week">Due in 7 days</option>
+      <option value="none">No follow-up set</option>
+    </select>
+    <input id="search" type="search" placeholder="Search company, contact, need…" aria-label="Search">
+  </section>
+
+  <section id="board" class="board"></section>
+  <section id="list" class="list" hidden></section>
+</main>
+
+<main id="dupPage" hidden>
+  <section class="page-head">
+    <div>
+      <h1>Duplicates</h1>
+      <p class="sub" id="dupSummary">Checking…</p>
+    </div>
+  </section>
+  <div id="dupList"></div>
+  <details class="history" id="mergeHistory">
+    <summary>Recent merges</summary>
+    <div></div>
+  </details>
+  <details class="history" id="dismissHistory">
+    <summary>Marked as not duplicates</summary>
+    <div></div>
+  </details>
+</main>
+
+<main id="rmPage" hidden>
+  <section class="page-head">
+    <div>
+      <h1>Roadmap &amp; feedback</h1>
+      <p class="sub">One place for the three of us to agree what's built, what's next, and what we learned this week.</p>
+    </div>
+  </section>
+  <nav class="subtabs" id="rmTabs" aria-label="Roadmap sections">
+    <button data-sub="overview">Overview</button>
+    <button data-sub="roadmap">Roadmap</button>
+    <button data-sub="tests">Test this week</button>
+    <button data-sub="feedback">Feedback loop<span class="count"></span></button>
+  </nav>
+  <div id="rmBody"><p class="sub">Loading…</p></div>
+</main>
+
+<button class="fb-fab" id="fbBtn" title="Tell us what worked, what didn't, what's missing"><svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M10 2.5c-4.7 0-8 2.9-8 6.6 0 2 1 3.8 2.7 5l-.6 2.6c-.1.5.4.9.9.6l3-1.7c.6.1 1.3.2 2 .2 4.7 0 8-2.9 8-6.7S14.7 2.5 10 2.5"/></svg>Feedback</button>
+<div class="toast" id="toast" role="status" hidden></div>
+<section class="pulse" id="pulse" role="region" aria-live="polite" aria-label="Quick feedback" hidden></section>
+
+<dialog id="fbDlg">
+  <form id="fbForm">
+    <h2>Feedback</h2>
+    <p class="sub">From: <span data-me></span> · <span id="fbWhere"></span></p>
+    <div class="section-title">What kind?</div>
+    <div class="pills" id="fbTypes"></div>
+    <p class="sub small" id="fbTypeHint"></p>
+    <div class="section-title">How much does it matter?</div>
+    <div class="pills" id="fbImpacts"></div>
+    <textarea id="fbText" rows="5" required placeholder="When I … I expected … but …"></textarea>
+    <p class="error" id="fbErr" hidden></p>
+    <div class="actions">
+      <button type="button" class="btn" id="fbCancel">Cancel</button>
+      <button type="submit" class="btn primary">Send to Ask</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="meDlg">
+  <form>
+    <h2>Who's using this browser?</h2>
+    <p class="sub">Your name goes on feedback, test results and changes you make. It's remembered on this device.</p>
+    <input list="meList" required placeholder="Your first name" autocomplete="given-name">
+    <datalist id="meList"></datalist>
+    <div id="pulseSettings"></div>
+    <div class="actions"><button type="submit" class="btn primary">Save</button></div>
+  </form>
+</dialog>
+
+<aside id="drawer" class="drawer" hidden aria-label="Deal details"></aside>
+<div id="scrim" class="scrim" hidden></div>
+
+<dialog id="importDlg">
+  <form method="dialog" id="importForm">
+    <h2>Add a lead from a Slack message</h2>
+    <p class="sub">Paste the message exactly as posted in #sales. Tag the owner with @name.</p>
+    <textarea id="importText" rows="9" required placeholder="New Lead/ Skydo
+
+Looking for a website. Speaking to Diya, Brand manager.
+
+Source: Vishal, auto pilot
+Next Step: Call on Monday
+@Arun"></textarea>
+    <p class="error" id="importErr" hidden></p>
+    <div id="importDupes" class="dup-warn" hidden></div>
+    <div class="actions">
+      <button type="button" class="btn" id="importCancel">Cancel</button>
+      <button type="button" class="btn" id="importForce" hidden>Create as a new deal anyway</button>
+      <button type="submit" class="btn primary" id="importSubmit">Create lead</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="hsDlg" class="wide">
+  <div class="hs-head">
+    <div>
+      <h2>Import from a HubSpot export</h2>
+      <p class="sub" id="hsSub">In HubSpot open Deals, Companies or Contacts → Export → .xlsx or .csv, then choose the file here.</p>
+    </div>
+    <button class="close" id="hsClose" aria-label="Close">×</button>
+  </div>
+
+  <div id="hsStep1">
+    <label class="dropzone" id="hsDrop">
+      <input type="file" id="hsFile" accept=".xlsx,.csv" hidden>
+      <strong>Choose a file</strong> or drop it here
+      <span class="sub">.xlsx or .csv · up to 25 MB</span>
+    </label>
+  </div>
+
+  <div id="hsStep2" hidden>
+    <div class="hs-grid">
+      <section>
+        <div class="section-title">1 · Columns</div>
+        <p class="sub small">Matched automatically; change any that look wrong.</p>
+        <div id="hsMapping" class="map-grid"></div>
+      </section>
+      <section>
+        <div class="section-title">2 · Stages</div>
+        <p class="sub small" id="hsStageHint">How each HubSpot stage lands on your board.</p>
+        <div id="hsStages" class="map-grid"></div>
+        <div class="section-title">3 · Options</div>
+        <label class="opt">If the company already exists
+          <select id="hsMode">
+            <option value="update">Update it with values from the file</option>
+            <option value="skip">Leave it as is</option>
+          </select>
+        </label>
+        <label class="opt">Dates like 03/04/2026 mean
+          <select id="hsDateOrder">
+            <option value="dmy">3 April (day first)</option>
+            <option value="mdy">March 4 (month first)</option>
+          </select>
+        </label>
+      </section>
+    </div>
+    <div class="section-title">Preview · first 5 rows</div>
+    <div class="list preview" id="hsPreview"></div>
+  </div>
+
+  <div id="hsStep3" hidden>
+    <div class="stats" id="hsCheckStats"></div>
+    <div id="hsReview"></div>
+    <div id="hsInFile"></div>
+  </div>
+
+  <div id="hsResult" hidden></div>
+  <p class="error" id="hsErr" hidden></p>
+  <div class="actions">
+    <button class="btn" id="hsBack" hidden>Choose another file</button>
+    <button class="btn primary" id="hsGo" hidden>Import</button>
+  </div>
+</dialog>
+
+<script src="app.js" type="module"></script>
+</body>
+</html>
