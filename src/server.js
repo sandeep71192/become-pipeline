@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { fileURLToPath } from 'node:url';
 import {
-  listLeads, getLead, updateLead, addActivity, EDITABLE_FIELDS, resolveId, learnCorrection,
+  listLeads, getLead, updateLead, addActivity, EDITABLE_FIELDS, resolveId, learnCorrection, changes,
   mergeLeads, undoMerge, dismissPair, undismissPair, listMerges, listDismissals,
 } from './db.js';
 import { parseLeadMessage } from './parser.js';
@@ -34,6 +34,22 @@ if (process.env.APP_PASSWORD) {
 }
 
 app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
+
+// Live updates: browsers keep this stream open and refresh when a deal changes
+// (a lead arriving from Slack, a teammate moving a stage, a merge).
+app.get('/api/events', (req, res) => {
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  res.write('retry: 3000\n\n');
+  let timer = null;
+  const onChange = () => {   // many writes arrive together (lead + history): send one signal
+    clearTimeout(timer);
+    timer = setTimeout(() => res.write(`event: change\ndata: ${Date.now()}\n\n`), 250);
+  };
+  const ping = setInterval(() => res.write(': ping\n\n'), 25000);   // keeps proxies from closing it
+  changes.on('change', onChange);
+  req.on('close', () => { changes.off('change', onChange); clearInterval(ping); clearTimeout(timer); });
+});
 
 app.get('/api/meta', (_req, res) => res.json({ statuses: STATUSES, slack: slackEnabled() }));
 

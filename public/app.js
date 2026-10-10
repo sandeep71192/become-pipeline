@@ -405,5 +405,17 @@ const refreshDupes = () => dupes.load().catch(() => {});
   route();
   refreshDupes();
   if (currentPage() !== 'roadmap') roadmapTab.load();   // feedback types for the Feedback button
-  setInterval(() => { if (!document.hidden && dragId == null) { load(); refreshDupes(); } }, 20000);
+  // Live: refresh as soon as the server says something changed; polling stays as a fallback.
+  const refreshAll = () => {
+    if (dragId != null) return;
+    load();
+    refreshDupes();
+    if (state.openId != null && !$('#drawer').hidden && !$('#drawer').contains(document.activeElement)) openLead(state.openId);
+    if (currentPage() === 'roadmap') roadmapTab.load();
+  };
+  try {
+    const events = new EventSource('/api/events');
+    events.addEventListener('change', refreshAll);
+  } catch {}
+  setInterval(() => { if (!document.hidden) refreshAll(); }, 60000);
 })();

@@ -1,7 +1,13 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { EventEmitter } from 'node:events';
 import { DEFAULT_STATUS } from './statuses.js';
+
+/** Fires 'change' after any write to deals or their history, so open dashboards can refresh. */
+export const changes = new EventEmitter();
+changes.setMaxListeners(100);
+const changed = () => changes.emit('change');
 
 const DB_PATH = process.env.DB_PATH || 'data/crm.db';
 if (DB_PATH !== ':memory:') mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -125,6 +131,7 @@ export function getLeadBySlackTs(ts) {
 }
 
 export function insertLead(data, createdNote = 'Lead created from Slack message') {
+  queueMicrotask(changed);
   const cols = LEAD_FIELDS.filter((f) => data[f] !== undefined && data[f] !== null);
   const created = data.created_at ? ', created_at' : '';
   const sql = `INSERT INTO leads (${cols.join(', ')}${created})
@@ -138,6 +145,7 @@ export function insertLead(data, createdNote = 'Lead created from Slack message'
 }
 
 export function updateLead(id, patch) {
+  queueMicrotask(changed);
   const cols = Object.keys(patch).filter((k) => EDITABLE_FIELDS.has(k) || k === 'owner_slack_id' || k === 'hubspot_id');
   if (!cols.length) return getLead(id);
   db.prepare(`UPDATE leads SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = datetime('now') WHERE id = ?`)
@@ -146,6 +154,7 @@ export function updateLead(id, patch) {
 }
 
 export function addActivity(leadId, type, body, author = null, slackTs = null, createdAt = null) {
+  queueMicrotask(changed);
   db.prepare(
     `INSERT OR IGNORE INTO activities (lead_id, type, body, author, slack_ts, created_at)
      VALUES (?, ?, ?, ?, ?, COALESCE(?, datetime('now')))`
