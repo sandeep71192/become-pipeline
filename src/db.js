@@ -143,11 +143,13 @@ export function insertLead(data, createdNote = 'Lead created from Slack message'
   const { lastInsertRowid } = db.prepare(sql).run(...args);
   const id = Number(lastInsertRowid);
   addActivity(id, 'created', createdNote, data.posted_by, null, data.created_at);
+  changes.emit('lead', id);   // per-deal signal (e.g. mirror to the Google Sheet)
   return getLead(id);
 }
 
 export function updateLead(id, patch) {
   queueMicrotask(changed);
+  queueMicrotask(() => changes.emit('lead', id));
   const cols = Object.keys(patch).filter((k) => EDITABLE_FIELDS.has(k) || k === 'owner_slack_id' || k === 'hubspot_id');
   if (!cols.length) return getLead(id);
   db.prepare(`UPDATE leads SET ${cols.map((c) => `${c} = ?`).join(', ')}, updated_at = datetime('now') WHERE id = ?`)

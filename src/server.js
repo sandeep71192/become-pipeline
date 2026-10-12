@@ -12,6 +12,7 @@ import { STATUSES, STATUS_KEYS, statusLabel } from './statuses.js';
 import { ingestMessage } from './ingest.js';
 import { startSlack, slackEnabled, notifyThread, postToSalesChannel } from './slack.js';
 import { dueReminders, reminderText, runReminders } from './reminders.js';
+import { queueSheetSync, syncAll, sheetsEnabled } from './sheets.js';
 import { CYCLE, FEEDBACK_TYPES, IMPACTS, HORIZONS, ROADMAP_STATUSES, SCENARIOS, LENSES, OTHER_VOICES, NEXT_STEPS, PULSE_ACTIONS, PULSE_ACCURACY, BUILT } from './plan.js';
 import { cycleOf, listRoadmap, updateRoadmapItem, listFeedback, createFeedback, updateFeedback, listResults, recordResult, health,
   createPulse, updatePulse, pulseSummary, promotePulse } from './feedback.js';
@@ -249,6 +250,15 @@ app.post('/api/reminders/run', async (_req, res) => {
   if (!slackEnabled()) return res.status(409).json({ error: 'Slack is not connected.' });
   res.json({ sent: await runReminders({ post: postToSalesChannel, appUrl: APP_URL, force: true }) });
 });
+// ---------------------------------------------------------------- Google Sheet mirror (transition step)
+
+changes.on('lead', (id) => queueSheetSync(id, APP_URL));
+// Push every deal to the sheet now (first setup, or to repair hand edits).
+app.post('/api/sheets/sync-all', async (_req, res) => {
+  if (!sheetsEnabled()) return res.status(409).json({ error: 'Set SHEETS_WEBHOOK_URL and SHEETS_SECRET first.' });
+  try { res.json({ synced: await syncAll(APP_URL) }); } catch (err) { res.status(502).json({ error: err.message }); }
+});
+
 if (process.env.REMINDERS !== 'off') {
   setInterval(() => {
     if (slackEnabled()) runReminders({ post: postToSalesChannel, appUrl: APP_URL }).catch((e) => console.warn('[reminders]', e.message));

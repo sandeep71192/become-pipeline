@@ -122,6 +122,17 @@ Delete a `<link>` in `index.html` to drop a layer.
 5. **Stop any local copy** that uses the same Slack tokens, then deploy. `/healthz` should return `{"ok":true,"slack":true}`.
 6. **Load data:** run `railway ssh`, then `npm run backfill -- 30`, then use **Import HubSpot export** in the app. Never run `npm run seed` there, because it deletes all deals.
 
+## Google Sheet mirror (transition step)
+
+Every deal is also written to the team's Google Sheet (the HubSpot deals export), in the same columns: Record ID, Deal Name ("Company | Need"), Deal Stage, Close Date, Deal owner, Amount and Create Date. Contact, next step, follow-up, source and links are added in columns H–M. The row is added when a lead arrives from Slack, and updated whenever the deal changes.
+
+To set it up:
+1. In the sheet, open **Extensions → Apps Script** and paste [scripts/google-sheet-sync.gs](scripts/google-sheet-sync.gs).
+2. Under **Project Settings → Script properties**, add `SECRET` with a long random value.
+3. Click **Deploy → New deployment → Web app**. Set Execute as **Me** and access to **Anyone**, then copy the URL. The secret is what protects it.
+4. In Railway, set `SHEETS_WEBHOOK_URL` to that URL and `SHEETS_SECRET` to the same secret.
+5. Optional: `POST /api/sheets/sync-all` pushes every existing deal.
+
 ## Connect Slack (about 5 minutes)
 
 1. Go to https://api.slack.com/apps → **Create New App** → **From an app manifest**. Pick the workspace and paste `slack-manifest.yml`.
